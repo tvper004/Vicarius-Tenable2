@@ -5,8 +5,8 @@ services:
   appdb:
     # image: 127.0.0.1:5000/vrx-reports-appdb:latest # Removed registry image
     build:
-      context: .
-      dockerfile: appdb/Dockerfile
+      context: ./appdb
+      dockerfile: Dockerfile
     restart: always
 
     ports:
@@ -33,8 +33,8 @@ services:
   app:
     # image: 127.0.0.1:5000/vrx-reports-app:latest # Removed registry image
     build:
-      context: .
-      dockerfile: app/Dockerfile
+      context: ./app
+      dockerfile: Dockerfile
     restart: always
 #    labels:
 #      - "traefik.enabled=false"
