@@ -9,10 +9,11 @@ class TenableClient:
         self.secret_key = secret_key
         self.base_url = "https://cloud.tenable.com"
         self.headers = {
-            "X-ApiKeys": f"accessKey={self.api_key};secretKey={self.secret_key}",
+            "X-ApiKeys": f"accessKey={self.api_key}; secretKey={self.secret_key}",
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
+
 
     def get_assets(self):
         """
