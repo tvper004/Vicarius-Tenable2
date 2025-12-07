@@ -2956,3 +2956,250 @@ def clean_table_groups(host, port, user, password, database):
     # Fechar conexão
     cur.close()
     conn.close()
+
+# ============================================================================
+# TENABLE.IO INTEGRATION FUNCTIONS
+# ============================================================================
+
+def check_create_table_tenable_assets(host, port, user, password, database):
+    """
+    Creates the tenable_assets table if it doesn't exist.
+    Stores asset/endpoint information from Tenable.io
+    """
+    db_params = {
+        'host': host,
+        'port': port,
+        'user': user,
+        'password': password,
+        'database': database
+    }
+
+    conn = psycopg2.connect(**db_params)
+    conn.autocommit = True
+    cur = conn.cursor()
+
+    cur.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'tenable_assets')")
+    exists = cur.fetchone()[0]
+
+    if not exists:
+        create_table_query = """
+        CREATE TABLE tenable_assets (
+            asset_uuid VARCHAR(255) PRIMARY KEY,
+            hostname VARCHAR(255),
+            ip_address VARCHAR(50),
+            operating_system VARCHAR(255),
+            last_seen VARCHAR(50),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        cur.execute(create_table_query)
+        print("The table 'tenable_assets' was created successfully!")
+    else:
+        print("The table 'tenable_assets' already exists!")
+
+    cur.close()
+    conn.close()
+
+def check_create_table_tenable_vulnerabilities(host, port, user, password, database):
+    """
+    Creates the tenable_vulnerabilities table if it doesn't exist.
+    Stores vulnerability information from Tenable.io
+    """
+    db_params = {
+        'host': host,
+        'port': port,
+        'user': user,
+        'password': password,
+        'database': database
+    }
+
+    conn = psycopg2.connect(**db_params)
+    conn.autocommit = True
+    cur = conn.cursor()
+
+    cur.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'tenable_vulnerabilities')")
+    exists = cur.fetchone()[0]
+
+    if not exists:
+        create_table_query = """
+        CREATE TABLE tenable_vulnerabilities (
+            id SERIAL PRIMARY KEY,
+            asset_uuid VARCHAR(255),
+            plugin_id VARCHAR(50),
+            cve VARCHAR(50),
+            cvss FLOAT,
+            severity VARCHAR(20),
+            vulnerability_name TEXT,
+            first_found VARCHAR(50),
+            last_found VARCHAR(50),
+            state VARCHAR(50),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (asset_uuid) REFERENCES tenable_assets(asset_uuid) ON DELETE CASCADE
+        );
+        """
+        cur.execute(create_table_query)
+        print("The table 'tenable_vulnerabilities' was created successfully!")
+    else:
+        print("The table 'tenable_vulnerabilities' already exists!")
+
+    cur.close()
+    conn.close()
+
+def insert_into_table_tenable_assets(json_data, host, port, user, password, database):
+    """
+    Inserts asset data from Tenable.io into the tenable_assets table.
+    Uses UPSERT (INSERT ... ON CONFLICT) to update existing records.
+    """
+    db_params = {
+        'host': host,
+        'port': port,
+        'user': user,
+        'password': password,
+        'database': database
+    }
+    ct = datetime.datetime.now()
+    
+    conn = psycopg2.connect(**db_params)
+    conn.autocommit = True
+    cur = conn.cursor()
+
+    try:
+        sql = """
+        INSERT INTO tenable_assets 
+        (asset_uuid, hostname, ip_address, operating_system, last_seen, updated_at) 
+        VALUES (%(asset_uuid)s, %(hostname)s, %(ip_address)s, %(operating_system)s, %(last_seen)s, CURRENT_TIMESTAMP)
+        ON CONFLICT (asset_uuid) 
+        DO UPDATE SET
+            hostname = EXCLUDED.hostname,
+            ip_address = EXCLUDED.ip_address,
+            operating_system = EXCLUDED.operating_system,
+            last_seen = EXCLUDED.last_seen,
+            updated_at = CURRENT_TIMESTAMP
+        """
+
+        inserted_count = 0
+        updated_count = 0
+        
+        for record in json_data:
+            cur.execute(sql, record)
+            inserted_count += 1
+
+        print(f"{ct} Records inserted/updated into 'tenable_assets' successfully: {len(json_data)}")
+
+    except psycopg2.Error as e:
+        print(f"{ct} An error occurred while inserting data into 'tenable_assets': {e}")
+        if 'record' in locals():
+            print(cur.mogrify(sql, record))
+
+    cur.close()
+    conn.close()
+
+def insert_into_table_tenable_vulnerabilities(json_data, host, port, user, password, database):
+    """
+    Inserts vulnerability data from Tenable.io into the tenable_vulnerabilities table.
+    """
+    db_params = {
+        'host': host,
+        'port': port,
+        'user': user,
+        'password': password,
+        'database': database
+    }
+    ct = datetime.datetime.now()
+    
+    conn = psycopg2.connect(**db_params)
+    conn.autocommit = True
+    cur = conn.cursor()
+
+    try:
+        # First, clean existing vulnerabilities to avoid duplicates
+        # This assumes a full refresh approach
+        print(f"{ct} Cleaning existing Tenable vulnerabilities...")
+        cur.execute("DELETE FROM tenable_vulnerabilities;")
+        
+        sql = """
+        INSERT INTO tenable_vulnerabilities 
+        (asset_uuid, plugin_id, cve, cvss, severity, vulnerability_name, first_found, last_found, state, updated_at) 
+        VALUES (%(asset_uuid)s, %(plugin_id)s, %(cve)s, %(cvss)s, %(severity)s, %(vulnerability_name)s, 
+                %(first_found)s, %(last_found)s, %(state)s, CURRENT_TIMESTAMP)
+        """
+
+        for record in json_data:
+            try:
+                cur.execute(sql, record)
+            except psycopg2.Error as e:
+                # Skip records that reference non-existent assets
+                if "foreign key constraint" in str(e).lower():
+                    print(f"Warning: Skipping vulnerability for non-existent asset: {record.get('asset_uuid')}")
+                else:
+                    raise
+
+        print(f"{ct} Records inserted into 'tenable_vulnerabilities' successfully: {len(json_data)}")
+
+    except psycopg2.Error as e:
+        print(f"{ct} An error occurred while inserting data into 'tenable_vulnerabilities': {e}")
+        if 'record' in locals():
+            print(cur.mogrify(sql, record))
+
+    cur.close()
+    conn.close()
+
+def create_view_unified_assets(host, port, user, password, database):
+    """
+    Creates or replaces the unified_assets_view that combines assets from both
+    Vicarius (endpoints table) and Tenable (tenable_assets table).
+    """
+    db_params = {
+        'host': host,
+        'port': port,
+        'user': user,
+        'password': password,
+        'database': database
+    }
+
+    conn = psycopg2.connect(**db_params)
+    conn.autocommit = True
+    cur = conn.cursor()
+
+    try:
+        # Drop the view if it exists
+        cur.execute("DROP VIEW IF EXISTS unified_assets_view;")
+        
+        # Create the unified view
+        create_view_query = """
+        CREATE VIEW unified_assets_view AS
+        SELECT 
+            'Vicarius' AS source,
+            endpoint_hash AS asset_id,
+            endpoint_name AS hostname,
+            endpoint_ip_address AS ip_address,
+            operating_system_name AS operating_system,
+            CAST(last_seen AS VARCHAR) AS last_seen,
+            endpoint_id,
+            NULL AS asset_uuid
+        FROM endpoints
+        
+        UNION ALL
+        
+        SELECT 
+            'Tenable' AS source,
+            asset_uuid AS asset_id,
+            hostname,
+            ip_address,
+            operating_system,
+            last_seen,
+            NULL AS endpoint_id,
+            asset_uuid
+        FROM tenable_assets;
+        """
+        
+        cur.execute(create_view_query)
+        print("The view 'unified_assets_view' was created successfully!")
+
+    except psycopg2.Error as e:
+        print(f"An error occurred while creating 'unified_assets_view': {e}")
+
+    cur.close()
+    conn.close()
