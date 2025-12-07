@@ -70,13 +70,22 @@ def job3():
         run_bash_script(script_path)
         print("sleeping" + str(datetime.now()))
 
+# Job 4: Run Tenable Sync
+def job4():
+    with job_lock:
+        print("launching job 4 (Tenable) " + str(datetime.now()))
+        script_path = "/usr/src/app/scripts/tenableSync.sh"
+        run_bash_script(script_path)
+        print("sleeping" + str(datetime.now()))
+
 # Create a scheduler
 scheduler = BackgroundScheduler()
 
 # Add jobs to the scheduler
-scheduler.add_job(job1, trigger=IntervalTrigger(hours=4))  # Runs every 10 seconds
-scheduler.add_job(job2, trigger=IntervalTrigger(hours=4))   # Runs every 1 minute
-scheduler.add_job(job3, trigger=IntervalTrigger(hours=4))   # Runs every 1 minute
+scheduler.add_job(job1, trigger=IntervalTrigger(hours=4))  # Runs every 4 hours
+scheduler.add_job(job2, trigger=IntervalTrigger(hours=4))   # Runs every 4 hours
+scheduler.add_job(job3, trigger=IntervalTrigger(hours=4))   # Runs every 4 hours
+scheduler.add_job(job4, trigger=IntervalTrigger(hours=12))  # Runs every 12 hours (Tenable)
 # Start the scheduler
 print("starting Scheduler: " + str(datetime.now()))
 scheduler.start()

@@ -17,11 +17,22 @@ sleep 20
 
 #/usr/local/bin/python /usr/src/app/scripts/VickyTopiaReportCLI.py --allreports  >> /var/log/crontab.log 2>&1
 #Initial Pull 
+echo "========================================" 
 echo "Initial Pull: Starting" 
+echo "========================================" 
 date
+
+# Load Vicarius data
+echo "Loading Vicarius data..."
 /usr/local/bin/python /usr/src/app/scripts/VickyTopiaReportCLI.py --allreports >> /var/log/initialsync.log 2>&1
-#nohup /usr/local/bin/python /usr/src/app/scripts/launcher.py &
+
+# Load Tenable data
+echo "Loading Tenable data..."
+/usr/local/bin/python /usr/src/app/scripts/VickyTopiaReportCLI.py --tenableReport >> /var/log/tenable_sync.log 2>&1
+
+echo "========================================" 
 echo "Initial Pull: Completed" 
+echo "========================================" 
 date
 
 # Start cron in foreground
